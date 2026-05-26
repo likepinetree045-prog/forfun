@@ -91,7 +91,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>🎵 플리 빌더 <span style="font-size:11px;opacity:0.5;font-weight:400;vertical-align:middle">v7</span></h1>
+  <h1>🎵 플리 빌더 <span style="font-size:11px;opacity:0.5;font-weight:400;vertical-align:middle">v8</span></h1>
   <h2>좋아요를 Claude로 분류해 Spotify 플리로 일괄 생성</h2>
 
   <!-- 설정 -->
@@ -520,11 +520,6 @@
   async function createAll() {
     const prefix = $("prefix").value || "";
     const isPublic = $("public-flag").checked;
-    const userJson = JSON.parse(localStorage.getItem(LS.USER) || "null");
-    if (!userJson) {
-      setStatus("create-status", "사용자 정보를 못 가져옴", "err");
-      return;
-    }
     $("btn-create").disabled = true;
     $("create-progress").classList.remove("hidden");
     const progBar = $("create-progress").firstElementChild;
@@ -537,7 +532,8 @@
       try {
         const name = prefix + cat.name;
         setStatus("create-status", `생성 중: ${name}…`);
-        const pl = await spotify(`/users/${userJson.id}/playlists`, {
+        // 2026-02 마이그레이션: POST /users/{id}/playlists 제거됨, /me/playlists 사용
+        const pl = await spotify(`/me/playlists`, {
           method: "POST",
           body: JSON.stringify({
             name,
