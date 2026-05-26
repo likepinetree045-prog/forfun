@@ -260,6 +260,118 @@ def recommend(
     console.print(table)
 
 
+@cli.command()
+@click.option("--limit", type=int, default=None, help="분류할 최대 곡 수 (기본: 전체 좋아요)")
+@click.option("--categories", "num_categories", type=int, default=None, help="카테고리 개수 (기본: Claude가 자동)")
+@click.option("--style", "style_hint", default="", help="분류 스타일 힌트 (예: '무드 위주', '계절별')")
+@click.option("--prefix", default="", help="생성될 플리 이름 앞에 붙일 접두사 (예: 'AI/ ')")
+@click.option("--dry-run", is_flag=True, help="Spotify에 생성하지 않고 미리보기만")
+@click.option("--public", is_flag=True, help="공개 플레이리스트로 생성")
+@click.pass_context
+def auto(
+    ctx: click.Context,
+    limit: Optional[int],
+    num_categories: Optional[int],
+    style_hint: str,
+    prefix: str,
+    dry_run: bool,
+    public: bool,
+) -> None:
+    """좋아요를 통째로 Claude에 보내 자동 분류하고 여러 플리를 한번에 생성한다."""
+    from .claude_client import ClaudeClient
+    from .spotify_client import SpotifyClient
+
+    sp = SpotifyClient()
+
+    console.print("Spotify 좋아요 가져오는 중...")
+    tracks = sp.pull_liked(limit=limit)
+    if not tracks:
+        console.print("[red]좋아요 곡이 없습니다[/red]")
+        return
+    console.print(f"  → {len(tracks)}곡 수집")
+
+    if len(tracks) > 1500:
+        console.print(
+            f"[yellow]경고: {len(tracks)}곡은 한 번에 처리하기 많습니다. "
+            "`--limit 1000` 같이 줄여서 여러 번 돌리는 걸 권장[/yellow]"
+        )
+        if not Confirm.ask("그래도 진행할까요?", default=False):
+            return
+
+    console.print("Claude에 분류 요청 중... (수십 초 걸릴 수 있음)")
+    claude = ClaudeClient()
+    categories = claude.classify_tracks(
+        tracks=tracks,
+        num_categories=num_categories,
+        style_hint=style_hint,
+    )
+
+    if not categories:
+        console.print("[red]Claude가 카테고리를 만들지 못했습니다[/red]")
+        return
+
+    # 미리보기
+    table = Table(title=f"자동 분류 결과 ({len(categories)}개 카테고리)")
+    table.add_column("플리 이름")
+    table.add_column("설명", overflow="fold")
+    table.add_column("곡수", justify="right")
+    table.add_column("샘플", overflow="fold")
+
+    uri_to_track = {t.uri: t for t in tracks}
+    for cat in categories:
+        sample = " / ".join(
+            uri_to_track[u].display for u in cat.track_uris[:3] if u in uri_to_track
+        )
+        table.add_row(
+            f"{prefix}{cat.name}",
+            cat.description,
+            str(len(cat.track_uris)),
+            sample,
+        )
+    console.print(table)
+
+    total = sum(len(c.track_uris) for c in categories)
+    console.print(f"[dim]총 {total}/{len(tracks)}곡이 분류됨[/dim]")
+
+    if dry_run:
+        console.print("[yellow]--dry-run: Spotify에 생성하지 않음[/yellow]")
+        return
+
+    if not Confirm.ask(f"\n위 {len(categories)}개 플리를 Spotify에 생성할까요?", default=True):
+        return
+
+    lib = _load_library(ctx.obj["library_path"])
+    created: list[tuple[str, str]] = []  # (이름, URL)
+    for cat in categories:
+        name = f"{prefix}{cat.name}"
+        console.print(f"생성 중: {name} ({len(cat.track_uris)}곡)...")
+        pl = sp.create_playlist(
+            name=name,
+            track_uris=cat.track_uris,
+            description=f"auto: {cat.description}"[:300],
+            public=public,
+        )
+        url = pl.get("external_urls", {}).get("spotify", pl["id"])
+        created.append((name, url))
+        lib.upsert_playlist(
+            PlaylistRecord(
+                name=name,
+                spotify_id=pl["id"],
+                criteria={
+                    "auto": True,
+                    "style": style_hint,
+                    "category": cat.name,
+                    "description": cat.description,
+                },
+            )
+        )
+    lib.save()
+
+    console.print(f"\n[green]{len(created)}개 플리 생성 완료[/green]")
+    for name, url in created:
+        console.print(f"  • {name}: {url}")
+
+
 @cli.group()
 def playlist() -> None:
     """플레이리스트 생성·동기화."""

@@ -27,6 +27,29 @@ SYSTEM_PROMPT = """너는 사용자가 좋아하는 곡 목록을 보고 비슷�
 """
 
 
+CLASSIFY_SYSTEM_PROMPT = """너는 사용자의 좋아요 트랙 목록을 받아서 적당한 수의 플레이리스트 카테고리로 분류하는 음악 큐레이터다.
+
+규칙:
+1. 입력은 인덱스가 붙은 트랙 리스트다. 각 트랙은 `{"i": 정수 인덱스, "title": ..., "artist": ...}` 형태.
+2. 카테고리는 분위기·장르·맥락(시간대·계절·활동) 등 사용자가 실제로 플레이할 만한 단위로 묶는다.
+3. 카테고리 이름은 한국어로 짧고 직관적이게 (예: "여름 드라이브", "새벽 인디", "운동 EDM").
+4. 한 트랙은 가장 잘 어울리는 한 카테고리에만 배정한다. 모호하면 가장 강한 인상의 카테고리로 보낸다.
+5. 너무 작은 카테고리(3곡 미만)는 만들지 않는다. 곡이 적으면 인접한 카테고리에 합친다.
+6. 출력은 반드시 다음 JSON만 반환한다. 다른 텍스트는 출력하지 않는다.
+
+출력 스키마:
+{
+  "categories": [
+    {
+      "name": "카테고리명",
+      "description": "한 줄 설명 (어떤 분위기·맥락인지)",
+      "track_indices": [0, 3, 7, ...]
+    }
+  ]
+}
+"""
+
+
 @dataclass
 class Recommendation:
     title: str
@@ -35,6 +58,13 @@ class Recommendation:
 
     def search_query(self) -> str:
         return f"track:{self.title} artist:{self.artist}"
+
+
+@dataclass
+class Category:
+    name: str
+    description: str
+    track_uris: list[str]
 
 
 class ClaudeClient:
@@ -88,6 +118,51 @@ class ClaudeClient:
         )
         return _parse_recommendations(text)
 
+    def classify_tracks(
+        self,
+        tracks: list[Track],
+        num_categories: Optional[int] = None,
+        style_hint: str = "",
+    ) -> list[Category]:
+        if not tracks:
+            raise ValueError("분류할 트랙이 비어있습니다")
+
+        payload = [
+            {"i": i, "title": t.name, "artist": ", ".join(t.artists)}
+            for i, t in enumerate(tracks)
+        ]
+
+        if num_categories is None:
+            cat_hint = "곡 수에 맞춰 5~8개"
+        else:
+            cat_hint = f"정확히 {num_categories}개"
+
+        user_msg = (
+            f"다음은 사용자의 좋아요 트랙 {len(tracks)}곡이다.\n"
+            f"카테고리 개수 가이드: {cat_hint}.\n"
+            f"분류 스타일 힌트: {style_hint or '(자유 — 분위기와 맥락 위주)'}\n\n"
+            f"트랙:\n{json.dumps(payload, ensure_ascii=False)}\n\n"
+            "위 규칙대로 JSON으로만 응답하라."
+        )
+
+        resp = self.client.messages.create(
+            model=self.model,
+            max_tokens=8192,
+            system=[
+                {
+                    "type": "text",
+                    "text": CLASSIFY_SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[{"role": "user", "content": user_msg}],
+        )
+
+        text = "".join(
+            block.text for block in resp.content if getattr(block, "type", "") == "text"
+        )
+        return _parse_classification(text, tracks)
+
 
 def _parse_recommendations(text: str) -> list[Recommendation]:
     """LLM 응답에서 JSON 배열을 추출해 Recommendation 리스트로 변환."""
@@ -135,6 +210,71 @@ def _extract_json_array(text: str):
         try:
             data = json.loads(match.group(0))
             if isinstance(data, list):
+                return data
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+def _parse_classification(text: str, tracks: list[Track]) -> list[Category]:
+    """LLM 분류 응답 → Category 리스트. track_indices를 실제 URI로 매핑."""
+    obj = _extract_json_object(text)
+    if obj is None or "categories" not in obj:
+        raise ValueError(f"Claude 응답에서 categories JSON을 찾지 못함: {text[:200]}")
+
+    n = len(tracks)
+    out: list[Category] = []
+    seen_uris: set[str] = set()  # 한 곡은 한 카테고리에만
+
+    for item in obj.get("categories", []):
+        if not isinstance(item, dict):
+            continue
+        name = (item.get("name") or "").strip()
+        if not name:
+            continue
+        indices = item.get("track_indices") or []
+        uris: list[str] = []
+        for idx in indices:
+            if not isinstance(idx, int) or idx < 0 or idx >= n:
+                continue
+            uri = tracks[idx].uri
+            if uri in seen_uris:
+                continue
+            seen_uris.add(uri)
+            uris.append(uri)
+        if not uris:
+            continue
+        out.append(
+            Category(
+                name=name,
+                description=(item.get("description") or "").strip(),
+                track_uris=uris,
+            )
+        )
+    return out
+
+
+def _extract_json_object(text: str):
+    text = text.strip()
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except json.JSONDecodeError:
+        pass
+    fence = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", text)
+    if fence:
+        try:
+            data = json.loads(fence.group(1))
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            pass
+    match = re.search(r"\{[\s\S]*\}", text)
+    if match:
+        try:
+            data = json.loads(match.group(0))
+            if isinstance(data, dict):
                 return data
         except json.JSONDecodeError:
             pass

@@ -47,7 +47,30 @@ pb pull         # 좋아요·내 플레이리스트를 로컬 캐시로
 
 ---
 
-## 큐레이션 흐름
+## 가장 빠른 동선 — `pb auto`
+
+좋아요를 통째로 Claude에 보내 **알아서 N개 카테고리로 분류 → Spotify에 플리들 일괄 생성**.
+태그 부여 같은 사전 작업 필요 없음.
+
+```bash
+pb auth                              # 한 번만
+pb auto --dry-run                    # 미리보기만 (Spotify 변경 없음, Claude 호출은 발생)
+pb auto                              # 진행: 좋아요 전체 → 자동 카테고리 → 일괄 생성
+pb auto --limit 200 --categories 6   # 작게 시도해보기
+pb auto --style "계절·시간대 위주" --prefix "AI/ "
+```
+
+옵션:
+- `--limit N`: 분류할 곡 수 제한 (기본: 좋아요 전체)
+- `--categories N`: 카테고리 개수 강제 (기본: Claude가 5~8개 자동 판단)
+- `--style "..."`: 분류 스타일 힌트 (예: `"무드 위주"`, `"장르별"`, `"운동/휴식"`)
+- `--prefix "..."`: 생성될 플리 이름 앞에 붙일 접두사
+- `--dry-run`: 분류 결과만 보고 생성은 안 함
+- `--public`: 공개 플리로 생성 (기본: 비공개)
+
+## 큐레이션 흐름 (수동, 보조)
+
+태그·평점 기반으로 직접 큐레이션하고 싶을 때:
 
 ```
 좋아요 가져오기 → 태그·평점 부여 → 기준대로 필터링 → (옵션) AI 추천 → Spotify에 플레이리스트 생성
@@ -129,12 +152,13 @@ pb playlist sync "여름 드라이브 2026"
 | 명령 | 동작 |
 |---|---|
 | `pb auth` | Spotify OAuth 로그인 |
-| `pb pull [--limit N]` | 좋아요·플레이리스트 메타 동기화 |
-| `pb tag <query> [--tag X] [--rating N] [--note "..."]` | 곡에 태그/평점/메모 부여 |
+| **`pb auto [--limit N] [--categories N] [--style "..."] [--dry-run]`** | **좋아요 전체를 자동 분류해 여러 플리 일괄 생성 (메인 동선)** |
+| `pb pull [--limit N]` | 좋아요·플레이리스트 메타를 로컬 캐시로 동기화 |
+| `pb tag <query> [--tag X] [--rating N] [--note "..."]` | 곡에 태그/평점/메모 부여 (수동 큐레이션) |
 | `pb tag --interactive` | 태깅 안 된 곡 순회하며 입력 |
 | `pb list [--tag X] [--any-tag Y] [--min-rating N] [--limit N]` | 필터링 출력 |
 | `pb recommend --seed-tag X [-n 10] [--mood "..."]` | Claude 추천 → Spotify 매칭 |
-| `pb playlist create <name> --tag X [--ai N]` | 큐레이션해서 Spotify에 새 플리 생성 |
+| `pb playlist create <name> --tag X [--ai N]` | 태그 기반 큐레이션으로 새 플리 생성 |
 | `pb playlist sync <name>` | 저장된 기준으로 기존 플리 갱신 |
 
 ---
