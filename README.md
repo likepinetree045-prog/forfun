@@ -1,4 +1,28 @@
-# playlist-builder (`pb`)
+# playlist-builder
+
+좋아하는 곡을 **Claude로 분류**해 **Spotify 플레이리스트로 일괄 생성**하는 도구.
+**📱 폰만으로 가능한 웹앱**과 **💻 PC용 CLI** 두 가지 동선을 제공합니다.
+
+## 📱 폰에서 (웹앱)
+
+GitHub Pages로 호스팅된 단일 페이지에서 모든 단계 완결:
+
+```
+[웹앱] Spotify 로그인 (PKCE)  →  좋아요 가져오기  →  JSON 복사
+[Claude 앱] 복사한 JSON 붙여넣고 "분류해줘"  →  결과 JSON 복사
+[웹앱] 그 JSON 붙여넣기  →  미리보기  →  "생성" 버튼  →  완료
+```
+
+URL: `https://<username>.github.io/forfun/`  (Pages 활성화 후 표시됨)
+
+**최초 셋업 (1회):**
+1. Spotify 앱 Settings → **Redirect URIs**에 위 GitHub Pages URL 추가 → Save
+2. 웹앱 첫 화면의 "설정"에 Spotify **Client ID** 입력 → 저장
+3. "로그인" 버튼 클릭
+
+## 💻 PC에서 (CLI) — 선택사항
+
+태그·평점 기반 큐레이션, AI 추천 등 더 세밀한 작업이 필요할 때.
 
 좋아하는 곡을 **태그·평점·메모로 큐레이션**하고, **Claude AI 추천**을 더해
 **Spotify 플레이리스트로 만드는 CLI**.

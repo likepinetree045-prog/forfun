@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>플리 빌더 — 좋아요를 분류해 Spotify 플리로</title>
+<style>
+  :root {
+    --bg: #0e0e10;
+    --card: #18181b;
+    --card-2: #1f1f24;
+    --text: #e8e8ea;
+    --text-dim: #a1a1aa;
+    --accent: #1db954;
+    --accent-2: #1ed760;
+    --danger: #ef4444;
+    --border: #2a2a32;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  body { padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0); }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 12px; color: var(--text-dim); font-weight: 500; }
+  .step {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .step h3 { margin: 0 0 10px; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+  .step .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: #000; font-size: 13px; font-weight: 700;
+  }
+  .step .num.done { background: #4ade80; }
+  .step .num.pending { background: #3f3f46; color: var(--text-dim); }
+  button, .btn {
+    appearance: none; border: 0; cursor: pointer;
+    background: var(--accent); color: #000;
+    font-weight: 600; font-size: 15px;
+    padding: 12px 18px; border-radius: 999px;
+    transition: filter 0.15s ease, transform 0.05s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:hover, .btn:hover { filter: brightness(1.05); }
+  button:active, .btn:active { transform: scale(0.98); }
+  button:disabled { background: #3f3f46; color: #71717a; cursor: not-allowed; }
+  button.secondary { background: var(--card-2); color: var(--text); border: 1px solid var(--border); }
+  button.danger { background: var(--danger); color: white; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  textarea {
+    width: 100%; min-height: 120px; max-height: 380px;
+    background: var(--card-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px; line-height: 1.4; resize: vertical;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+  .muted { color: var(--text-dim); font-size: 13px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--card-2); font-size: 12px; color: var(--text-dim); }
+  .progress { height: 6px; background: var(--card-2); border-radius: 3px; overflow: hidden; margin: 8px 0; }
+  .progress > div { height: 100%; background: var(--accent); transition: width 0.2s ease; }
+  ul.cats { list-style: none; padding: 0; margin: 0; }
+  ul.cats li { padding: 10px; border-bottom: 1px solid var(--border); }
+  ul.cats li:last-child { border-bottom: 0; }
+  ul.cats .cname { font-weight: 600; }
+  ul.cats .cdesc { color: var(--text-dim); font-size: 13px; }
+  ul.cats .ccount { color: var(--accent); font-size: 13px; }
+  a { color: var(--accent-2); }
+  .err { color: #fca5a5; background: #3a0f0f; padding: 8px 10px; border-radius: 8px; margin: 8px 0; font-size: 13px; }
+  .ok { color: #86efac; background: #0e2a18; padding: 8px 10px; border-radius: 8px; margin: 8px 0; font-size: 13px; }
+  details summary { cursor: pointer; color: var(--text-dim); font-size: 13px; padding: 4px 0; }
+  .hidden { display: none !important; }
+  input[type=text] {
+    background: var(--card-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; font-size: 14px; width: 100%;
+  }
+  label { display: block; font-size: 13px; color: var(--text-dim); margin: 8px 0 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎵 플리 빌더</h1>
+  <h2>좋아요를 Claude로 분류해 Spotify 플리로 일괄 생성</h2>
+
+  <!-- 설정 -->
+  <div class="step" id="setup">
+    <h3><span class="num pending" id="num-setup">⚙</span> 설정</h3>
+    <label for="client-id">Spotify Client ID</label>
+    <input type="text" id="client-id" placeholder="앱 대시보드에서 복사한 Client ID" autocomplete="off">
+    <div class="muted" style="margin-top:6px">
+      Spotify 앱의 <b>Redirect URI</b>에 이 페이지 URL을 추가해야 합니다:
+      <div class="mono" id="redirect-uri-display" style="margin:6px 0; padding:8px; background:var(--card-2); border-radius:8px;"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="save-client-id" class="secondary">저장</button>
+      <span class="muted" id="client-id-status"></span>
+    </div>
+  </div>
+
+  <!-- 1: 로그인 -->
+  <div class="step" id="step-login">
+    <h3><span class="num pending" id="num-login">1</span> Spotify 로그인</h3>
+    <div id="login-status" class="muted">대기 중…</div>
+    <div class="row" style="margin-top:10px">
+      <button id="btn-login">Spotify 로그인</button>
+      <button id="btn-logout" class="secondary hidden">로그아웃</button>
+    </div>
+  </div>
+
+  <!-- 2: 좋아요 가져오기 -->
+  <div class="step" id="step-fetch">
+    <h3><span class="num pending" id="num-fetch">2</span> 좋아요 가져오기</h3>
+    <div class="row" style="margin-bottom:8px">
+      <button id="btn-fetch" disabled>좋아요 전체 가져오기</button>
+      <span class="muted" id="fetch-status">로그인 후 활성화됩니다</span>
+    </div>
+    <div class="progress hidden" id="fetch-progress"><div style="width:0%"></div></div>
+    <div id="fetch-result" class="hidden">
+      <div class="muted" style="margin-bottom:6px">아래 JSON을 복사해서 Claude에게 "이거 분류해줘" 라고 보내세요:</div>
+      <textarea id="tracks-json" readonly></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="btn-copy-tracks" class="secondary">📋 복사</button>
+        <span class="muted" id="copy-status"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3: 분류 결과 붙여넣기 -->
+  <div class="step" id="step-paste">
+    <h3><span class="num pending" id="num-paste">3</span> Claude의 분류 결과 붙여넣기</h3>
+    <div class="muted" style="margin-bottom:8px">
+      Claude가 만들어준 <span class="mono">{"categories":[...]}</span> JSON을 통째로 붙여넣으세요.
+    </div>
+    <textarea id="categories-json" placeholder='{"categories": [{"name": "...", "description": "...", "track_uris": ["spotify:track:..."]}]}'></textarea>
+    <div class="row" style="margin-top:8px">
+      <button id="btn-parse" class="secondary">확인 / 미리보기</button>
+      <span class="muted" id="parse-status"></span>
+    </div>
+    <div id="parse-preview" class="hidden" style="margin-top:12px">
+      <ul class="cats" id="cats-list"></ul>
+    </div>
+  </div>
+
+  <!-- 4: 생성 -->
+  <div class="step" id="step-create">
+    <h3><span class="num pending" id="num-create">4</span> Spotify에 플리 일괄 생성</h3>
+    <label for="prefix">플리 이름 접두사 (선택)</label>
+    <input type="text" id="prefix" placeholder='예: "AI/ "'>
+    <label style="margin-top:10px"><input type="checkbox" id="public-flag"> 공개 플리로 생성 (기본: 비공개)</label>
+    <div class="row" style="margin-top:12px">
+      <button id="btn-create" disabled>생성</button>
+      <span class="muted" id="create-status"></span>
+    </div>
+    <div class="progress hidden" id="create-progress"><div style="width:0%"></div></div>
+    <div id="create-result"></div>
+  </div>
+
+  <details style="margin-top:20px">
+    <summary>도움말 & 셋업 가이드</summary>
+    <div class="muted" style="padding:8px 4px">
+      <p><b>최초 1회 셋업:</b></p>
+      <ol>
+        <li>https://developer.spotify.com/dashboard 에서 앱 생성 (또는 기존 앱 사용)</li>
+        <li>앱 Settings → <b>Redirect URIs</b>에 위 박스의 URL을 그대로 추가 → Save</li>
+        <li>Client ID를 복사해 이 페이지의 "설정"에 입력 → 저장</li>
+        <li>아래 "로그인" 진행</li>
+      </ol>
+      <p>이 페이지는 <b>PKCE OAuth</b>를 사용해 Client Secret이 필요 없습니다. 토큰은 본인 브라우저(localStorage)에만 저장됩니다.</p>
+    </div>
+  </details>
+</div>
+
+<script>
+(() => {
+  const SCOPES = "user-library-read playlist-modify-private playlist-modify-public";
+  const TOKEN_URL = "https://accounts.spotify.com/api/token";
+  const AUTH_URL = "https://accounts.spotify.com/authorize";
+  const API = "https://api.spotify.com/v1";
+
+  const LS = {
+    CLIENT_ID: "pb.clientId",
+    VERIFIER: "pb.codeVerifier",
+    STATE: "pb.state",
+    ACCESS: "pb.accessToken",
+    REFRESH: "pb.refreshToken",
+    EXPIRES: "pb.expiresAt",
+    USER: "pb.user",
+    TRACKS: "pb.tracksCache",
+  };
+
+  // ---------- helpers ----------
+  const $ = (id) => document.getElementById(id);
+  const redirectUri = location.origin + location.pathname;
+  $("redirect-uri-display").textContent = redirectUri;
+
+  const setStatus = (id, text, kind) => {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = kind === "err" ? "err" : kind === "ok" ? "ok" : "muted";
+  };
+  const setNum = (id, kind) => {
+    const el = $(id);
+    if (!el) return;
+    el.classList.remove("pending", "done");
+    if (kind === "done") el.classList.add("done");
+    else if (kind === "pending") el.classList.add("pending");
+  };
+
+  function base64UrlEncode(bytes) {
+    let s = btoa(String.fromCharCode(...new Uint8Array(bytes)));
+    return s.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function randomString(len) {
+    const arr = new Uint8Array(len);
+    crypto.getRandomValues(arr);
+    return Array.from(arr, (b) => ("0" + b.toString(16)).slice(-2)).join("").slice(0, len);
+  }
+  async function sha256(str) {
+    const buf = new TextEncoder().encode(str);
+    return await crypto.subtle.digest("SHA-256", buf);
+  }
+
+  // ---------- auth ----------
+  async function login() {
+    const clientId = (localStorage.getItem(LS.CLIENT_ID) || "").trim();
+    if (!clientId) {
+      setStatus("login-status", "먼저 설정에 Client ID를 입력해 주세요", "err");
+      return;
+    }
+    const verifier = randomString(96);
+    const state = randomString(32);
+    const challenge = base64UrlEncode(await sha256(verifier));
+    localStorage.setItem(LS.VERIFIER, verifier);
+    localStorage.setItem(LS.STATE, state);
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: "code",
+      redirect_uri: redirectUri,
+      code_challenge_method: "S256",
+      code_challenge: challenge,
+      state,
+      scope: SCOPES,
+    });
+    location.href = `${AUTH_URL}?${params.toString()}`;
+  }
+
+  async function exchangeCode(code) {
+    const clientId = localStorage.getItem(LS.CLIENT_ID);
+    const verifier = localStorage.getItem(LS.VERIFIER);
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+      client_id: clientId,
+      code_verifier: verifier,
+    });
+    const res = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    if (!res.ok) throw new Error("토큰 교환 실패: " + (await res.text()));
+    const data = await res.json();
+    storeTokens(data);
+  }
+
+  function storeTokens(data) {
+    localStorage.setItem(LS.ACCESS, data.access_token);
+    if (data.refresh_token) localStorage.setItem(LS.REFRESH, data.refresh_token);
+    const expiresAt = Date.now() + (data.expires_in - 60) * 1000;
+    localStorage.setItem(LS.EXPIRES, String(expiresAt));
+  }
+
+  async function refreshIfNeeded() {
+    const access = localStorage.getItem(LS.ACCESS);
+    const expiresAt = parseInt(localStorage.getItem(LS.EXPIRES) || "0", 10);
+    if (access && Date.now() < expiresAt) return access;
+    const refresh = localStorage.getItem(LS.REFRESH);
+    const clientId = localStorage.getItem(LS.CLIENT_ID);
+    if (!refresh || !clientId) return null;
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refresh,
+      client_id: clientId,
+    });
+    const res = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    if (!res.ok) {
+      logout();
+      return null;
+    }
+    const data = await res.json();
+    storeTokens(data);
+    return data.access_token;
+  }
+
+  function logout() {
+    [LS.ACCESS, LS.REFRESH, LS.EXPIRES, LS.USER].forEach((k) => localStorage.removeItem(k));
+    refreshUI();
+  }
+
+  async function spotify(path, opts = {}) {
+    let token = await refreshIfNeeded();
+    if (!token) throw new Error("로그인이 필요합니다");
+    const res = await fetch(API + path, {
+      ...opts,
+      headers: {
+        ...(opts.headers || {}),
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/json",
+      },
+    });
+    if (res.status === 401) {
+      logout();
+      throw new Error("세션 만료. 다시 로그인해 주세요");
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Spotify API ${res.status}: ${text.slice(0, 200)}`);
+    }
+    if (res.status === 204) return null;
+    return await res.json();
+  }
+
+  // ---------- 좋아요 가져오기 ----------
+  async function fetchAllLiked() {
+    const all = [];
+    let url = "/me/tracks?limit=50";
+    let total = null;
+    setStatus("fetch-status", "가져오는 중…");
+    $("fetch-progress").classList.remove("hidden");
+    while (url) {
+      const data = await spotify(url);
+      if (total === null) total = data.total;
+      for (const item of data.items) {
+        const tr = item.track;
+        if (!tr || !tr.id) continue;
+        all.push({
+          i: all.length,
+          uri: tr.uri,
+          title: tr.name,
+          artist: tr.artists.map((a) => a.name).join(", "),
+        });
+      }
+      const pct = total ? Math.min(100, Math.round((all.length / total) * 100)) : 0;
+      $("fetch-progress").firstElementChild.style.width = pct + "%";
+      setStatus("fetch-status", `${all.length}/${total || "?"} 곡`);
+      if (data.next) {
+        url = data.next.replace("https://api.spotify.com/v1", "");
+      } else {
+        url = null;
+      }
+    }
+    return all;
+  }
+
+  async function onFetch() {
+    $("btn-fetch").disabled = true;
+    try {
+      const tracks = await fetchAllLiked();
+      localStorage.setItem(LS.TRACKS, JSON.stringify(tracks));
+      const text = JSON.stringify(tracks, null, 2);
+      $("tracks-json").value = text;
+      $("fetch-result").classList.remove("hidden");
+      setStatus("fetch-status", `${tracks.length}곡 수집 완료`, "ok");
+      setNum("num-fetch", "done");
+    } catch (e) {
+      setStatus("fetch-status", e.message, "err");
+    } finally {
+      $("btn-fetch").disabled = false;
+    }
+  }
+
+  // ---------- 분류 결과 파싱 ----------
+  let parsedCategories = null;
+  function parseCategories() {
+    const raw = $("categories-json").value.trim();
+    if (!raw) {
+      setStatus("parse-status", "JSON이 비어있습니다", "err");
+      return;
+    }
+    let data;
+    try {
+      data = JSON.parse(extractJsonObject(raw));
+    } catch (e) {
+      setStatus("parse-status", "JSON 파싱 실패: " + e.message, "err");
+      return;
+    }
+    const cats = (data && data.categories) || [];
+    const validCats = [];
+    const tracks = JSON.parse(localStorage.getItem(LS.TRACKS) || "[]");
+    const uriSet = new Set(tracks.map((t) => t.uri));
+    for (const c of cats) {
+      const name = (c.name || "").trim();
+      const uris = (c.track_uris || []).filter(
+        (u) => typeof u === "string" && (uriSet.size === 0 || uriSet.has(u))
+      );
+      if (!name || uris.length === 0) continue;
+      validCats.push({ name, description: c.description || "", uris });
+    }
+    if (validCats.length === 0) {
+      setStatus("parse-status", "유효한 카테고리가 없습니다 (이름·곡 모두 필요)", "err");
+      return;
+    }
+    parsedCategories = validCats;
+    renderPreview(validCats);
+    setStatus("parse-status", `${validCats.length}개 카테고리 OK`, "ok");
+    $("parse-preview").classList.remove("hidden");
+    $("btn-create").disabled = false;
+    setNum("num-paste", "done");
+  }
+
+  function extractJsonObject(text) {
+    // 코드펜스 안에 들어있으면 추출
+    const fence = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    if (fence) return fence[1];
+    // 본문 어딘가에 객체가 있으면
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) return m[0];
+    return text;
+  }
+
+  function renderPreview(cats) {
+    const ul = $("cats-list");
+    ul.innerHTML = "";
+    const tracks = JSON.parse(localStorage.getItem(LS.TRACKS) || "[]");
+    const byUri = new Map(tracks.map((t) => [t.uri, t]));
+    for (const c of cats) {
+      const li = document.createElement("li");
+      const cname = document.createElement("div");
+      cname.className = "cname";
+      cname.textContent = c.name;
+      const cdesc = document.createElement("div");
+      cdesc.className = "cdesc";
+      cdesc.textContent = c.description;
+      const ccount = document.createElement("div");
+      ccount.className = "ccount";
+      const sample = c.uris
+        .slice(0, 3)
+        .map((u) => (byUri.get(u) ? `${byUri.get(u).artist} — ${byUri.get(u).title}` : u))
+        .join(" / ");
+      ccount.textContent = `${c.uris.length}곡 · ${sample}`;
+      li.append(cname, cdesc, ccount);
+      ul.appendChild(li);
+    }
+  }
+
+  // ---------- 플리 생성 ----------
+  async function createAll() {
+    const prefix = $("prefix").value || "";
+    const isPublic = $("public-flag").checked;
+    const userJson = JSON.parse(localStorage.getItem(LS.USER) || "null");
+    if (!userJson) {
+      setStatus("create-status", "사용자 정보를 못 가져옴", "err");
+      return;
+    }
+    $("btn-create").disabled = true;
+    $("create-progress").classList.remove("hidden");
+    const progBar = $("create-progress").firstElementChild;
+    const result = $("create-result");
+    result.innerHTML = "";
+
+    let done = 0;
+    const total = parsedCategories.length;
+    for (const cat of parsedCategories) {
+      try {
+        const name = prefix + cat.name;
+        setStatus("create-status", `생성 중: ${name}…`);
+        const pl = await spotify(`/users/${userJson.id}/playlists`, {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            description: cat.description.slice(0, 300),
+            public: isPublic,
+          }),
+        });
+        // 100곡씩 추가
+        for (let i = 0; i < cat.uris.length; i += 100) {
+          await spotify(`/playlists/${pl.id}/tracks`, {
+            method: "POST",
+            body: JSON.stringify({ uris: cat.uris.slice(i, i + 100) }),
+          });
+        }
+        const url = (pl.external_urls && pl.external_urls.spotify) || "";
+        const row = document.createElement("div");
+        row.className = "ok";
+        row.innerHTML = `✓ <b></b> <a target="_blank" rel="noreferrer">열기</a>`;
+        row.querySelector("b").textContent = name + ` (${cat.uris.length}곡)`;
+        row.querySelector("a").href = url;
+        result.appendChild(row);
+      } catch (e) {
+        const row = document.createElement("div");
+        row.className = "err";
+        row.textContent = `✗ ${cat.name}: ${e.message}`;
+        result.appendChild(row);
+      }
+      done++;
+      progBar.style.width = Math.round((done / total) * 100) + "%";
+    }
+    setStatus("create-status", `완료 (${done}/${total})`, "ok");
+    setNum("num-create", "done");
+    $("btn-create").disabled = false;
+  }
+
+  // ---------- UI 상태 ----------
+  async function refreshUI() {
+    const clientId = localStorage.getItem(LS.CLIENT_ID) || "";
+    $("client-id").value = clientId;
+    if (clientId) {
+      setStatus("client-id-status", "저장됨", "ok");
+      setNum("num-setup", "done");
+    }
+    const access = localStorage.getItem(LS.ACCESS);
+    if (access) {
+      let user = JSON.parse(localStorage.getItem(LS.USER) || "null");
+      if (!user) {
+        try {
+          user = await spotify("/me");
+          localStorage.setItem(LS.USER, JSON.stringify(user));
+        } catch (e) {
+          logout();
+          return;
+        }
+      }
+      setStatus("login-status", `로그인됨: ${user.display_name || user.id}`, "ok");
+      $("btn-login").classList.add("hidden");
+      $("btn-logout").classList.remove("hidden");
+      $("btn-fetch").disabled = false;
+      setStatus("fetch-status", "준비 완료");
+      setNum("num-login", "done");
+    } else {
+      setStatus("login-status", "대기 중…");
+      $("btn-login").classList.remove("hidden");
+      $("btn-logout").classList.add("hidden");
+      $("btn-fetch").disabled = true;
+      setStatus("fetch-status", "로그인 후 활성화됩니다");
+    }
+    // 저장된 트랙 있으면 보여주기
+    const cached = localStorage.getItem(LS.TRACKS);
+    if (cached) {
+      const arr = JSON.parse(cached);
+      $("tracks-json").value = JSON.stringify(arr, null, 2);
+      $("fetch-result").classList.remove("hidden");
+      setStatus("fetch-status", `${arr.length}곡 캐시됨`, "ok");
+      setNum("num-fetch", "done");
+    }
+  }
+
+  // ---------- 이벤트 ----------
+  $("save-client-id").addEventListener("click", () => {
+    const v = $("client-id").value.trim();
+    if (!v) {
+      setStatus("client-id-status", "Client ID를 입력하세요", "err");
+      return;
+    }
+    localStorage.setItem(LS.CLIENT_ID, v);
+    setStatus("client-id-status", "저장됨", "ok");
+    setNum("num-setup", "done");
+  });
+
+  $("btn-login").addEventListener("click", login);
+  $("btn-logout").addEventListener("click", () => {
+    logout();
+    localStorage.removeItem(LS.TRACKS);
+    location.reload();
+  });
+  $("btn-fetch").addEventListener("click", onFetch);
+  $("btn-copy-tracks").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("tracks-json").value);
+      setStatus("copy-status", "복사됨", "ok");
+    } catch {
+      $("tracks-json").select();
+      document.execCommand("copy");
+      setStatus("copy-status", "복사됨", "ok");
+    }
+  });
+  $("btn-parse").addEventListener("click", parseCategories);
+  $("btn-create").addEventListener("click", createAll);
+
+  // ---------- 초기 진입: OAuth 콜백 처리 ----------
+  (async () => {
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+    const state = params.get("state");
+    const err = params.get("error");
+    if (err) {
+      setStatus("login-status", "Spotify 에러: " + err, "err");
+      history.replaceState({}, "", location.pathname);
+    } else if (code) {
+      const expected = localStorage.getItem(LS.STATE);
+      if (state !== expected) {
+        setStatus("login-status", "state 불일치", "err");
+      } else {
+        try {
+          setStatus("login-status", "토큰 교환 중…");
+          await exchangeCode(code);
+        } catch (e) {
+          setStatus("login-status", e.message, "err");
+        }
+      }
+      history.replaceState({}, "", location.pathname);
+    }
+    await refreshUI();
+  })();
+})();
+</script>
+</body>
+</html>
