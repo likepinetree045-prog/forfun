@@ -91,7 +91,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>🎵 플리 빌더 <span style="font-size:11px;opacity:0.5;font-weight:400;vertical-align:middle">v6</span></h1>
+  <h1>🎵 플리 빌더 <span style="font-size:11px;opacity:0.5;font-weight:400;vertical-align:middle">v7</span></h1>
   <h2>좋아요를 Claude로 분류해 Spotify 플리로 일괄 생성</h2>
 
   <!-- 설정 -->
@@ -180,6 +180,16 @@
       <p>이 페이지는 <b>PKCE OAuth</b>를 사용해 Client Secret이 필요 없습니다. 토큰은 본인 브라우저(localStorage)에만 저장됩니다.</p>
     </div>
   </details>
+
+  <details style="margin-top:12px" id="debug-panel" open>
+    <summary>🐛 디버그 로그 (실패 시 여기서 원인 확인)</summary>
+    <div class="row" style="margin:8px 0">
+      <button class="secondary" id="btn-debug-clear">로그 지우기</button>
+      <button class="secondary" id="btn-debug-copy">📋 복사</button>
+      <button class="secondary" id="btn-debug-me">현재 /me 조회</button>
+    </div>
+    <pre id="debug-log" class="mono" style="background:var(--card-2); padding:10px; border-radius:8px; white-space:pre-wrap; word-break:break-all; max-height:380px; overflow:auto; font-size:11px; line-height:1.4;"></pre>
+  </details>
 </div>
 
 <script>
@@ -262,6 +272,7 @@
   async function exchangeCode(code) {
     const clientId = localStorage.getItem(LS.CLIENT_ID);
     const verifier = localStorage.getItem(LS.VERIFIER);
+    dbgLog(`토큰 교환 시작. client_id=${clientId} verifier길이=${verifier ? verifier.length : 0}`);
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code,
@@ -274,8 +285,13 @@
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
     });
-    if (!res.ok) throw new Error("토큰 교환 실패: " + (await res.text()));
+    if (!res.ok) {
+      const errText = await res.text();
+      dbgLog(`토큰 교환 실패: ${res.status} ${errText.slice(0, 300)}`);
+      throw new Error("토큰 교환 실패: " + errText);
+    }
     const data = await res.json();
+    dbgLog(`토큰 교환 성공. scope="${data.scope}" expires_in=${data.expires_in}s`);
     storeTokens(data);
   }
 
@@ -318,9 +334,40 @@
     refreshUI();
   }
 
+  function dbgLog(line) {
+    const el = $("debug-log");
+    if (!el) return;
+    const ts = new Date().toISOString().split("T")[1].replace("Z", "");
+    el.textContent += `[${ts}] ${line}\n`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function dbgInteresting(headers) {
+    // Spotify가 403 reason 등을 헤더에 줄 때가 있어 캡처
+    const out = {};
+    const keys = [
+      "www-authenticate",
+      "x-spotify-reason",
+      "x-content-type-options",
+      "retry-after",
+      "x-ratelimit-remaining",
+      "content-type",
+    ];
+    for (const k of keys) {
+      const v = headers.get(k);
+      if (v) out[k] = v;
+    }
+    return out;
+  }
+
   async function spotify(path, opts = {}) {
     let token = await refreshIfNeeded();
     if (!token) throw new Error("로그인이 필요합니다");
+    const method = opts.method || "GET";
+    const tokenPreview = token.slice(0, 12) + "…(" + token.length + "자)";
+    dbgLog(`→ ${method} ${path}  [token:${tokenPreview}]`);
+    if (opts.body) dbgLog(`  body: ${opts.body.slice(0, 200)}`);
+
     const res = await fetch(API + path, {
       ...opts,
       headers: {
@@ -329,17 +376,21 @@
         "Content-Type": "application/json",
       },
     });
+
+    dbgLog(`← ${res.status} ${res.statusText}  headers=${JSON.stringify(dbgInteresting(res.headers))}`);
+
     if (res.status === 401) {
       logout();
       throw new Error("세션 만료. 다시 로그인해 주세요");
     }
     if (!res.ok) {
       const text = await res.text();
-      const method = (opts.method || "GET");
+      dbgLog(`  body: ${text.slice(0, 400)}`);
       throw new Error(`${method} ${path} → ${res.status}: ${text.slice(0, 250)}`);
     }
     if (res.status === 204) return null;
-    return await res.json();
+    const data = await res.json();
+    return data;
   }
 
   // ---------- 좋아요 가져오기 ----------
@@ -545,11 +596,15 @@
       const scope = localStorage.getItem(LS.SCOPE) || "(없음)";
       const hasModify = /playlist-modify/.test(scope);
       const sMark = hasModify ? "✓" : "✗";
+      const product = user.product || "?";
+      const country = user.country || "?";
       setStatus(
         "login-status",
-        `로그인됨: ${user.display_name || user.id} (ID: ${user.id}) · scope: ${scope} ${sMark}`,
+        `로그인됨: ${user.display_name || user.id} (ID: ${user.id}, product: ${product}, country: ${country}) · scope: ${scope} ${sMark}`,
         "ok"
       );
+      dbgLog(`me: id=${user.id} email=${user.email || "?"} product=${product} country=${country}`);
+      dbgLog(`scope: ${scope}`);
       $("btn-login").classList.add("hidden");
       $("btn-logout").classList.remove("hidden");
       $("btn-fetch").disabled = false;
@@ -605,8 +660,35 @@
   $("btn-parse").addEventListener("click", parseCategories);
   $("btn-create").addEventListener("click", createAll);
 
+  // 디버그 패널 버튼
+  $("btn-debug-clear").addEventListener("click", () => {
+    $("debug-log").textContent = "";
+  });
+  $("btn-debug-copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("debug-log").textContent);
+      dbgLog("(로그 복사됨)");
+    } catch {
+      const r = document.createRange();
+      r.selectNode($("debug-log"));
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(r);
+      document.execCommand("copy");
+    }
+  });
+  $("btn-debug-me").addEventListener("click", async () => {
+    try {
+      const me = await spotify("/me");
+      dbgLog(`me JSON: ${JSON.stringify(me, null, 0).slice(0, 500)}`);
+    } catch (e) {
+      dbgLog(`me 에러: ${e.message}`);
+    }
+  });
+
   // ---------- 초기 진입: OAuth 콜백 처리 ----------
   (async () => {
+    dbgLog(`페이지 로드. URL=${location.href}`);
+    dbgLog(`redirect_uri=${redirectUri}`);
     const params = new URLSearchParams(location.search);
     const code = params.get("code");
     const state = params.get("state");
