@@ -91,7 +91,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>🎵 플리 빌더 <span style="font-size:11px;opacity:0.5;font-weight:400;vertical-align:middle">v5</span></h1>
+  <h1>🎵 플리 빌더 <span style="font-size:11px;opacity:0.5;font-weight:400;vertical-align:middle">v6</span></h1>
   <h2>좋아요를 Claude로 분류해 Spotify 플리로 일괄 생성</h2>
 
   <!-- 설정 -->
@@ -198,6 +198,7 @@
     EXPIRES: "pb.expiresAt",
     USER: "pb.user",
     TRACKS: "pb.tracksCache",
+    SCOPE: "pb.scope",
   };
 
   // ---------- helpers ----------
@@ -283,6 +284,7 @@
     if (data.refresh_token) localStorage.setItem(LS.REFRESH, data.refresh_token);
     const expiresAt = Date.now() + (data.expires_in - 60) * 1000;
     localStorage.setItem(LS.EXPIRES, String(expiresAt));
+    if (data.scope) localStorage.setItem(LS.SCOPE, data.scope);
   }
 
   async function refreshIfNeeded() {
@@ -312,7 +314,7 @@
   }
 
   function logout() {
-    [LS.ACCESS, LS.REFRESH, LS.EXPIRES, LS.USER].forEach((k) => localStorage.removeItem(k));
+    [LS.ACCESS, LS.REFRESH, LS.EXPIRES, LS.USER, LS.SCOPE].forEach((k) => localStorage.removeItem(k));
     refreshUI();
   }
 
@@ -540,7 +542,14 @@
           return;
         }
       }
-      setStatus("login-status", `로그인됨: ${user.display_name || user.id}`, "ok");
+      const scope = localStorage.getItem(LS.SCOPE) || "(없음)";
+      const hasModify = /playlist-modify/.test(scope);
+      const sMark = hasModify ? "✓" : "✗";
+      setStatus(
+        "login-status",
+        `로그인됨: ${user.display_name || user.id} (ID: ${user.id}) · scope: ${scope} ${sMark}`,
+        "ok"
+      );
       $("btn-login").classList.add("hidden");
       $("btn-logout").classList.remove("hidden");
       $("btn-fetch").disabled = false;
