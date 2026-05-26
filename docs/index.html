@@ -91,7 +91,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>🎵 플리 빌더</h1>
+  <h1>🎵 플리 빌더 <span style="font-size:11px;opacity:0.5;font-weight:400;vertical-align:middle">v4</span></h1>
   <h2>좋아요를 Claude로 분류해 Spotify 플리로 일괄 생성</h2>
 
   <!-- 설정 -->
@@ -333,7 +333,8 @@
     }
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`Spotify API ${res.status}: ${text.slice(0, 200)}`);
+      const method = (opts.method || "GET");
+      throw new Error(`${method} ${path} → ${res.status}: ${text.slice(0, 250)}`);
     }
     if (res.status === 204) return null;
     return await res.json();
