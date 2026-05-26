@@ -1,0 +1,44 @@
+{
+  "playlists": {
+    "여름 드라이브 2026": {
+      "spotify_id": "EXAMPLE_PLAYLIST_ID",
+      "criteria": {
+        "tags": ["여름", "드라이브"],
+        "min_rating": 4,
+        "ai_count": 5,
+        "mood": "햇살, 창문 열고",
+        "limit": 30
+      },
+      "last_synced": "2026-05-26T00:00:00+00:00"
+    }
+  },
+  "tracks": {
+    "spotify:track:EXAMPLE1": {
+      "added_at": "2026-04-01T12:00:00Z",
+      "album": "After Hours",
+      "artists": ["The Weeknd"],
+      "name": "Blinding Lights",
+      "note": "달릴 때 텐션 올리기 좋음",
+      "rating": 5,
+      "tags": ["드라이브", "신스팝", "고에너지"]
+    },
+    "spotify:track:EXAMPLE2": {
+      "added_at": "2026-05-10T09:00:00Z",
+      "album": "I AM",
+      "artists": ["IVE"],
+      "name": "I AM",
+      "note": "",
+      "rating": 4,
+      "tags": ["여름", "K-pop", "상쾌"]
+    },
+    "spotify:track:EXAMPLE3": {
+      "added_at": "2026-03-22T20:30:00Z",
+      "album": "이천십팔",
+      "artists": ["검정치마"],
+      "name": "EVERYTHING",
+      "note": "센티멘털한 새벽용",
+      "rating": 5,
+      "tags": ["인디", "새벽", "차분"]
+    }
+  }
+}

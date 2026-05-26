@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "playlist-builder"
+version = "0.1.0"
+description = "좋아하는 곡을 태그로 큐레이션하고 Claude 추천을 더해 Spotify 플레이리스트를 만드는 CLI"
+requires-python = ">=3.10"
+dependencies = [
+    "spotipy>=2.23.0",
+    "anthropic>=0.40.0",
+    "click>=8.1.0",
+    "rich>=13.7.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+]
+
+[project.scripts]
+pb = "playlist_builder.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["playlist_builder*"]
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

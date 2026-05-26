@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Spotipy 토큰 캐시
+.cache
+.cache-*
+
+# 환경변수
+.env
+.env.local
+
+# 실제 라이브러리 데이터 (예시 파일만 커밋)
+data/library.json
+
+# 테스트/커버리지
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 에디터
+.vscode/
+.idea/
+*.swp
+.DS_Store
