@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -258,6 +259,139 @@ def recommend(
         spotify_cell = match.uri if match else "[red]매칭 실패[/red]"
         table.add_row(r.artist, r.title, spotify_cell, r.reason)
     console.print(table)
+
+
+@cli.command()
+@click.option("--out", "out_path", type=click.Path(path_type=Path), default=None, help="출력 파일 경로. 지정 안 하면 stdout으로")
+@click.option("--limit", type=int, default=None, help="가져올 최대 곡 수 (기본: 좋아요 전체)")
+@click.option("--from-cache", is_flag=True, help="Spotify 호출 없이 로컬 library.json에서 읽기")
+@click.pass_context
+def tracks(
+    ctx: click.Context,
+    out_path: Optional[Path],
+    limit: Optional[int],
+    from_cache: bool,
+) -> None:
+    """좋아요 트랙을 분류용 짧은 JSON으로 출력 (채팅에 붙여넣기 좋은 형태)."""
+    if from_cache:
+        lib = _load_library(ctx.obj["library_path"])
+        all_tracks = list(lib.tracks.values())
+        if limit:
+            all_tracks = all_tracks[:limit]
+    else:
+        from .spotify_client import SpotifyClient
+
+        console.print("Spotify 좋아요 가져오는 중...", style="dim")
+        all_tracks = SpotifyClient().pull_liked(limit=limit)
+
+    payload = [
+        {"i": i, "uri": t.uri, "title": t.name, "artist": ", ".join(t.artists)}
+        for i, t in enumerate(all_tracks)
+    ]
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(text, encoding="utf-8")
+        console.print(f"[green]{len(payload)}곡을 {out_path}에 저장[/green]")
+    else:
+        click.echo(text)
+
+
+@cli.command()
+@click.argument("classifications_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--prefix", default="", help="생성될 플리 이름 앞에 붙일 접두사")
+@click.option("--dry-run", is_flag=True, help="Spotify에 생성하지 않고 미리보기만")
+@click.option("--public", is_flag=True, help="공개 플레이리스트로 생성")
+@click.option("--yes", "-y", is_flag=True, help="확인 프롬프트 스킵")
+@click.pass_context
+def apply(
+    ctx: click.Context,
+    classifications_file: Path,
+    prefix: str,
+    dry_run: bool,
+    public: bool,
+    yes: bool,
+) -> None:
+    """분류 결과 JSON을 받아 Spotify에 플레이리스트들을 일괄 생성한다.
+
+    \b
+    파일 형식:
+    {
+      "categories": [
+        {"name": "여름 드라이브", "description": "...", "track_uris": ["spotify:track:..."]}
+      ]
+    }
+    """
+    data = json.loads(classifications_file.read_text(encoding="utf-8"))
+    categories_data = data.get("categories", [])
+    if not categories_data:
+        console.print("[red]파일에 categories가 없습니다[/red]")
+        return
+
+    # 미리보기
+    table = Table(title=f"적용할 분류 ({len(categories_data)}개 카테고리)")
+    table.add_column("플리 이름")
+    table.add_column("설명", overflow="fold")
+    table.add_column("곡수", justify="right")
+    valid: list[dict] = []
+    for cat in categories_data:
+        name = (cat.get("name") or "").strip()
+        uris = [u for u in (cat.get("track_uris") or []) if u]
+        if not name or not uris:
+            continue
+        valid.append({"name": name, "description": cat.get("description", ""), "uris": uris})
+        table.add_row(f"{prefix}{name}", cat.get("description", ""), str(len(uris)))
+    console.print(table)
+    total = sum(len(c["uris"]) for c in valid)
+    console.print(f"[dim]총 {total}곡, {len(valid)}개 카테고리[/dim]")
+
+    if dry_run:
+        console.print("[yellow]--dry-run: Spotify에 생성하지 않음[/yellow]")
+        return
+
+    if not valid:
+        console.print("[red]유효한 카테고리가 없습니다[/red]")
+        return
+
+    if not yes and not Confirm.ask(
+        f"\n위 {len(valid)}개 플리를 Spotify에 생성할까요?", default=True
+    ):
+        return
+
+    from .spotify_client import SpotifyClient
+
+    sp = SpotifyClient()
+    lib = _load_library(ctx.obj["library_path"])
+    created: list[tuple[str, str]] = []
+    for cat in valid:
+        name = f"{prefix}{cat['name']}"
+        console.print(f"생성 중: {name} ({len(cat['uris'])}곡)...")
+        pl = sp.create_playlist(
+            name=name,
+            track_uris=cat["uris"],
+            description=f"manual classify: {cat['description']}"[:300],
+            public=public,
+        )
+        url = pl.get("external_urls", {}).get("spotify", pl["id"])
+        created.append((name, url))
+        lib.upsert_playlist(
+            PlaylistRecord(
+                name=name,
+                spotify_id=pl["id"],
+                criteria={
+                    "manual_classify": True,
+                    "source_file": str(classifications_file),
+                    "category": cat["name"],
+                    "description": cat["description"],
+                },
+            )
+        )
+    lib.save()
+
+    console.print(f"\n[green]{len(created)}개 플리 생성 완료[/green]")
+    for name, url in created:
+        console.print(f"  • {name}: {url}")
 
 
 @cli.command()

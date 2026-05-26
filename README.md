@@ -47,16 +47,34 @@ pb pull         # 좋아요·내 플레이리스트를 로컬 캐시로
 
 ---
 
-## 가장 빠른 동선 — `pb auto`
+## 가장 빠른 동선 — Claude 채팅 + `pb tracks` / `pb apply`
 
-좋아요를 통째로 Claude에 보내 **알아서 N개 카테고리로 분류 → Spotify에 플리들 일괄 생성**.
-태그 부여 같은 사전 작업 필요 없음.
+Anthropic API 키 없이도 됩니다. **Claude 채팅창에서 직접 분류**하고, 그 결과를 CLI로 Spotify에 적용:
 
 ```bash
-pb auth                              # 한 번만
-pb auto --dry-run                    # 미리보기만 (Spotify 변경 없음, Claude 호출은 발생)
-pb auto                              # 진행: 좋아요 전체 → 자동 카테고리 → 일괄 생성
-pb auto --limit 200 --categories 6   # 작게 시도해보기
+# 1) Spotify 좋아요를 분류용 짧은 JSON으로 출력
+pb auth
+pb tracks --out data/tracks.json
+
+# 2) data/tracks.json 내용을 Claude 채팅에 붙여넣고 "이거 분류해줘" 요청
+#    Claude가 다음 형식 JSON으로 답해줌:
+#    {"categories":[{"name":"...","description":"...","track_uris":["spotify:track:..."]}]}
+#    그 JSON을 data/categories.json에 저장
+
+# 3) 분류 결과를 Spotify에 일괄 생성
+pb apply data/categories.json --dry-run    # 미리보기
+pb apply data/categories.json              # 실제 생성
+pb apply data/categories.json --prefix "AI/ " --public
+```
+
+## 자동 분류 — `pb auto` (Anthropic API 키 필요)
+
+`ANTHROPIC_API_KEY`가 있으면 CLI 안에서 분류까지 한 번에:
+
+```bash
+pb auto --dry-run                    # 미리보기
+pb auto                              # 좋아요 전체 → 자동 카테고리 → 일괄 생성
+pb auto --limit 200 --categories 6
 pb auto --style "계절·시간대 위주" --prefix "AI/ "
 ```
 
@@ -152,7 +170,9 @@ pb playlist sync "여름 드라이브 2026"
 | 명령 | 동작 |
 |---|---|
 | `pb auth` | Spotify OAuth 로그인 |
-| **`pb auto [--limit N] [--categories N] [--style "..."] [--dry-run]`** | **좋아요 전체를 자동 분류해 여러 플리 일괄 생성 (메인 동선)** |
+| **`pb tracks [--out FILE] [--limit N]`** | **좋아요를 분류용 짧은 JSON으로 출력 (채팅에 붙일 입력)** |
+| **`pb apply <file> [--prefix "..."] [--dry-run]`** | **분류 결과 JSON을 받아 Spotify에 플리 일괄 생성** |
+| `pb auto [--limit N] [--categories N] [--style "..."] [--dry-run]` | Anthropic API 키가 있을 때 CLI 내에서 분류까지 한 번에 |
 | `pb pull [--limit N]` | 좋아요·플레이리스트 메타를 로컬 캐시로 동기화 |
 | `pb tag <query> [--tag X] [--rating N] [--note "..."]` | 곡에 태그/평점/메모 부여 (수동 큐레이션) |
 | `pb tag --interactive` | 태깅 안 된 곡 순회하며 입력 |

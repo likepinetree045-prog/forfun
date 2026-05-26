@@ -1,0 +1,19 @@
+{
+  "categories": [
+    {
+      "name": "여름 드라이브",
+      "description": "햇살, 창문 열고, 신스팝·시티팝 위주",
+      "track_uris": [
+        "spotify:track:0VjIjW4GlUZAMYd2vXMi3b",
+        "spotify:track:11dFghVXANMlKmJXsNCbNl"
+      ]
+    },
+    {
+      "name": "새벽 인디",
+      "description": "차분하고 잔잔한 한국 인디",
+      "track_uris": [
+        "spotify:track:abc123example"
+      ]
+    }
+  ]
+}
