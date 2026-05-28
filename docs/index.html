@@ -91,7 +91,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>🎵 플리 빌더 <span style="font-size:11px;opacity:0.5;font-weight:400;vertical-align:middle">v8</span></h1>
+  <h1>🎵 플리 빌더 <span style="font-size:11px;opacity:0.5;font-weight:400;vertical-align:middle">v9</span></h1>
   <h2>좋아요를 Claude로 분류해 Spotify 플리로 일괄 생성</h2>
 
   <!-- 설정 -->
@@ -128,7 +128,11 @@
     </div>
     <div class="progress hidden" id="fetch-progress"><div style="width:0%"></div></div>
     <div id="fetch-result" class="hidden">
-      <div class="muted" style="margin-bottom:6px">아래 JSON을 복사해서 Claude에게 "이거 분류해줘" 라고 보내세요:</div>
+      <div class="muted" style="margin-bottom:6px">아래 버튼으로 AI에 바로 보내거나, JSON을 복사해서 직접 붙여넣으세요:</div>
+      <div class="row" style="margin-bottom:8px">
+        <button id="btn-ai-claude">🤖 Claude로 분류하기</button>
+        <button id="btn-ai-gpt" class="secondary">💬 ChatGPT로 분류하기</button>
+      </div>
       <textarea id="tracks-json" readonly></textarea>
       <div class="row" style="margin-top:8px">
         <button id="btn-copy-tracks" class="secondary">📋 복사</button>
@@ -452,6 +456,33 @@
     }
   }
 
+  // ---------- AI로 바로 보내기 (URL 프롬프트 프리필) ----------
+  function buildClassifyPrompt(tracks) {
+    return [
+      "다음은 내 Spotify 좋아요 목록이야.",
+      "비슷한 분위기·장르·맥락끼리 5~8개 카테고리로 묶어줘.",
+      "반드시 아래 JSON만, 다른 말 없이 응답해줘:",
+      '{"categories":[{"name":"카테고리명","description":"한줄설명","track_uris":["spotify:track:..."]}]}',
+      "",
+      "좋아요 목록(JSON):",
+      JSON.stringify(tracks),
+    ].join("\n");
+  }
+  function openInAI(base) {
+    const tracks = JSON.parse(localStorage.getItem(LS.TRACKS) || "[]");
+    if (!tracks.length) {
+      setStatus("copy-status", "먼저 좋아요를 가져와 주세요", "err");
+      return;
+    }
+    const url = base + encodeURIComponent(buildClassifyPrompt(tracks));
+    if (url.length > 6000) {
+      setStatus("copy-status", "곡이 많아 링크가 너무 길어요. '📋 복사'로 직접 붙여넣어 주세요.", "err");
+      return;
+    }
+    window.open(url, "_blank", "noopener");
+    setStatus("copy-status", "새 탭에서 AI가 열렸어요. 답(JSON)을 받아 3단계에 붙여넣으세요.", "ok");
+  }
+
   // ---------- 분류 결과 파싱 ----------
   let parsedCategories = null;
   function parseCategories() {
@@ -663,6 +694,8 @@
       setStatus("copy-status", "복사됨", "ok");
     }
   });
+  $("btn-ai-claude").addEventListener("click", () => openInAI("https://claude.ai/new?q="));
+  $("btn-ai-gpt").addEventListener("click", () => openInAI("https://chatgpt.com/?q="));
   $("btn-parse").addEventListener("click", parseCategories);
   $("btn-create").addEventListener("click", createAll);
 
